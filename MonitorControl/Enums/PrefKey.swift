@@ -87,6 +87,10 @@ enum PrefKey: String {
   // Sliders for multiple displays
   case multiSliders
 
+  // ADD THESE NEW KEYS
+  case dimOnNightShift
+  case nightShiftDimmingLevel
+
   /* -- Display specific settings */
 
   // Enable mute DDC for display
@@ -153,6 +157,9 @@ enum PrefKey: String {
 
   // Override DDC control command code
   case remapDDC
+  
+  
+  
 }
 
 enum MultiKeyboardBrightness: Int {

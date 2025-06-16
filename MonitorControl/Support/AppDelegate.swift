@@ -9,6 +9,8 @@ import ServiceManagement
 import Settings
 import SimplyCoreAudio
 import Sparkle
+// ADD THIS IMPORT
+import CoreBrightness
 
 class AppDelegate: NSObject, NSApplicationDelegate {
   let statusItem: NSStatusItem = {
@@ -29,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   var startupActionWriteCounter: Int = 0
   var audioPlayer: AVAudioPlayer?
   let updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: UpdaterDelegate(), userDriverDelegate: nil)
+
+  // ADD THIS NEW PROPERTY
+  var brightnessBeforeNightShift: [CGDirectDisplayID: Float] = [:]
 
   var settingsPaneStyle: Settings.Style {
     if !DEBUG_MACOS10, #available(macOS 11.0, *) {
@@ -54,6 +59,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     app = self
     self.subscribeEventListeners()
     self.showSafeModeAlertIfNeeded()
+
+    // ADD THIS LINE
+    _ = NightShiftObserver.shared
+
     if !prefs.bool(forKey: PrefKey.appAlreadyLaunched.rawValue) {
       self.showOnboardingWindow()
     } else {
@@ -112,6 +121,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       // Only settings that are not false, 0 or "" by default are set here. Assumes pre-wiped database.
       prefs.set(true, forKey: PrefKey.appAlreadyLaunched.rawValue)
       prefs.set(true, forKey: PrefKey.SUEnableAutomaticChecks.rawValue)
+
+      // ADD THIS LINE
+      prefs.set(0.2, forKey: PrefKey.nightShiftDimmingLevel.rawValue) // Default to 20% brightness
     }
   }
 
@@ -176,6 +188,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(self.wakeNotification), name: NSWorkspace.didWakeNotification, object: nil)
     _ = DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name(rawValue: NSNotification.Name.accessibilityApi.rawValue), object: nil, queue: nil) { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.updateMediaKeyTap() } } // listen for accessibility status changes
     self.statusItemObserver = statusItem.observe(\.isVisible, options: [.old, .new]) { _, _ in self.statusItemVisibilityChanged() }
+
+    // ADD THIS LINE
+    NotificationCenter.default.addObserver(self, selector: #selector(self.handleNightShiftChange), name: .nightShiftStatusChanged, object: nil)
   }
 
   @objc private func sleepNotification() {
@@ -358,6 +373,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     onboardingVc?.showWindow(self)
     onboardingVc?.window?.center()
     NSApp.activate(ignoringOtherApps: true)
+    // ADD THIS NEW FUNCTION AT THE END OF THE FILE, BEFORE THE FINAL '}'
+    @objc func handleNightShiftChange(notification: NSNotification? = nil, force: Bool = false) {
+      var isEnabled: Bool?
+  
+      if let notification = notification, let userInfo = notification.userInfo {
+          isEnabled = userInfo["isEnabled"] as? Bool
+      } else if force {
+          var status: ObjCBool = false
+          let client = CBBlueLightClient()
+          if client.getBlueLightStatus(&status) {
+              isEnabled = status.boolValue
+          }
+      }
+  
+      guard let nightShiftEnabled = isEnabled, prefs.bool(forKey: PrefKey.dimOnNightShift.rawValue) else {
+          // If the feature is disabled, try to restore brightness just in case it was enabled before.
+          if !prefs.bool(forKey: PrefKey.dimOnNightShift.rawValue) {
+              for display in DisplayManager.shared.getAllDisplays() {
+                  if let originalBrightness = self.brightnessBeforeNightShift[display.identifier] {
+                      _ = display.setBrightness(originalBrightness, slow: true)
+                  }
+              }
+              self.brightnessBeforeNightShift.removeAll()
+          }
+          return
+      }
+  
+      let dimmingLevel = prefs.float(forKey: PrefKey.nightShiftDimmingLevel.rawValue)
+  
+      if nightShiftEnabled {
+          // Night Shift is ON, dim the displays
+          for display in DisplayManager.shared.getAllDisplays() {
+              // Only save the brightness if it hasn't been saved already
+              if self.brightnessBeforeNightShift[display.identifier] == nil {
+                  self.brightnessBeforeNightShift[display.identifier] = display.getBrightness()
+              }
+              _ = display.setBrightness(dimmingLevel, slow: true)
+          }
+      } else {
+          // Night Shift is OFF, restore brightness
+          for display in DisplayManager.shared.getAllDisplays() {
+              if let originalBrightness = self.brightnessBeforeNightShift[display.identifier] {
+                  _ = display.setBrightness(originalBrightness, slow: true)
+              }
+          }
+          self.brightnessBeforeNightShift.removeAll()
+      }
+    }
   }
   
   private func statusItemVisibilityChanged() {

@@ -24,9 +24,13 @@ class MainPrefsViewController: NSViewController, SettingsPane {
   @IBOutlet var enableSmooth: NSButton!
   @IBOutlet var enableBrightnessSync: NSButton!
   @IBOutlet var startupAction: NSPopUpButton!
+
   @IBOutlet var rowDoNothingStartupText: NSGridRow!
   @IBOutlet var rowWriteStartupText: NSGridRow!
   @IBOutlet var rowReadStartupText: NSGridRow!
+// ADD THESE TWO LINES
+@IBOutlet var dimOnNightShift: NSButton!
+@IBOutlet var nightShiftDimmingSlider: NSSlider!
 
   func updateGridLayout() {
     if self.startupAction.selectedTag() == StartupAction.doNothing.rawValue {
@@ -61,6 +65,13 @@ class MainPrefsViewController: NSViewController, SettingsPane {
     self.enableSmooth.state = prefs.bool(forKey: PrefKey.disableSmoothBrightness.rawValue) ? .off : .on
     self.enableBrightnessSync.state = prefs.bool(forKey: PrefKey.enableBrightnessSync.rawValue) ? .on : .off
     self.startupAction.selectItem(withTag: prefs.integer(forKey: PrefKey.startupAction.rawValue))
+
+    // ADD THIS BLOCK
+    self.dimOnNightShift.state = prefs.bool(forKey: PrefKey.dimOnNightShift.rawValue) ? .on : .off
+    self.nightShiftDimmingSlider.floatValue = prefs.float(forKey: PrefKey.nightShiftDimmingLevel.rawValue)
+    self.nightShiftDimmingSlider.isEnabled = self.dimOnNightShift.state == .on
+
+    // ... (rest of the function)
     // Preload Display settings to some extent to properly set up size in orther that animation won't fail
     menuslidersPrefsVc?.view.layoutSubtreeIfNeeded()
     keyboardPrefsVc?.view.layoutSubtreeIfNeeded()
@@ -143,6 +154,20 @@ class MainPrefsViewController: NSViewController, SettingsPane {
   @IBAction func startupAction(_ sender: NSPopUpButton) {
     prefs.set(sender.selectedTag(), forKey: PrefKey.startupAction.rawValue)
     self.updateGridLayout()
+  }
+
+  // ADD THESE NEW IBACTION FUNCTIONS
+  @IBAction func dimOnNightShiftClicked(_ sender: NSButton) {
+    prefs.set(sender.state == .on, forKey: PrefKey.dimOnNightShift.rawValue)
+    self.nightShiftDimmingSlider.isEnabled = sender.state == .on
+    // Immediately apply the change if Night Shift is already active
+    app.handleNightShiftChange(force: true)
+  }
+
+  @IBAction func nightShiftDimmingSliderChanged(_ sender: NSSlider) {
+    prefs.set(sender.floatValue, forKey: PrefKey.nightShiftDimmingLevel.rawValue)
+    // Immediately apply the change if Night Shift is already active
+    app.handleNightShiftChange(force: true)
   }
 
   @available(macOS, deprecated: 10.10)

@@ -54,3 +54,8 @@ bool CGSIsHDRSupported(CGDirectDisplayID display) __attribute__((weak_import));
 
 @end
 
+// THIS BLOCK IS NOW OUTSIDE OF THE OSDMANAGER INTERFACE
+@interface CBBlueLightClient : NSObject
+- (BOOL)getBlueLightStatus:(id)status;
+- (BOOL)setEnabled:(BOOL)enabled;
+@end
